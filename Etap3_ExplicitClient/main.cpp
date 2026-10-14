@@ -1,36 +1,33 @@
 #include <iostream>
 #include <windows.h> // LoadLibrary, GetProcAddress, FreeLibrary
 
-// Сигнатури функцій, які ми очікуємо знайти в InterpolationLib.dll.
-// Жодного .h файлу партнера тут немає - лише ці оголошення типів покажчиків,
-// складені власноруч за документацією (README.md / контрактом) партнера.
-typedef double (*LinearInterpolationFunc)(double, double, double, double, double);
-typedef double (*LagrangeFunc)(const double*, const double*, int, double);
-typedef double (*InterpolateFunc)(const double*, const double*, int, double);
-typedef double (*InterpolationErrorFunc)(const double*, const double*, int, double, double);
+// Сигнатури, складені власноруч за README.md партнера (PolyUtils), -
+// жодного .h файлу партнера тут не підключаємо.
+typedef int (*PolyAddFn)(const double*, int, const double*, int, double*, int);
+typedef int (*PolyMultiplyFn)(const double*, int, const double*, int, double*, int);
+typedef int (*PolyEvaluateFn)(const double*, int, double, double*);
+typedef int (*PolyDerivativeFn)(const double*, int, double*, int);
+typedef int (*PolyIntegralFn)(const double*, int, double, double*, int);
 
 int main()
 {
-    std::cout << "=== Explicit linking: InterpolationLib (partner SDK, DLL only) ===" << std::endl;
+    std::cout << "=== Explicit linking: PolyUtils (real partner SDK, DLL only) ===" << std::endl;
 
-    HMODULE library = LoadLibrary(TEXT("InterpolationLib.dll"));
+    HMODULE library = LoadLibraryA("PolyUtils.dll");
     if (library == nullptr)
     {
-        std::cerr << "ERROR: Could not load InterpolationLib.dll!" << std::endl;
+        std::cerr << "ERROR: Could not load PolyUtils.dll!" << std::endl;
         return 1;
     }
     std::cout << "DLL is successfully loaded!" << std::endl;
 
-    auto linearInterpolation = reinterpret_cast<LinearInterpolationFunc>(
-        GetProcAddress(library, "linearInterpolation"));
-    auto lagrange = reinterpret_cast<LagrangeFunc>(
-        GetProcAddress(library, "lagrange"));
-    auto interpolate = reinterpret_cast<InterpolateFunc>(
-        GetProcAddress(library, "interpolate"));
-    auto interpolationError = reinterpret_cast<InterpolationErrorFunc>(
-        GetProcAddress(library, "interpolationError"));
+    auto polyAdd = reinterpret_cast<PolyAddFn>(GetProcAddress(library, "PolyAdd"));
+    auto polyMultiply = reinterpret_cast<PolyMultiplyFn>(GetProcAddress(library, "PolyMultiply"));
+    auto polyEvaluate = reinterpret_cast<PolyEvaluateFn>(GetProcAddress(library, "PolyEvaluate"));
+    auto polyDerivative = reinterpret_cast<PolyDerivativeFn>(GetProcAddress(library, "PolyDerivative"));
+    auto polyIntegral = reinterpret_cast<PolyIntegralFn>(GetProcAddress(library, "PolyIntegral"));
 
-    if (!linearInterpolation || !lagrange || !interpolate || !interpolationError)
+    if (!polyAdd || !polyMultiply || !polyEvaluate || !polyDerivative || !polyIntegral)
     {
         std::cerr << "ERROR: one or more functions were not found in the DLL "
                    << "(check for C++ name mangling / extern \"C\")!" << std::endl;
@@ -39,20 +36,43 @@ int main()
     }
     std::cout << "All functions were found via GetProcAddress." << std::endl;
 
-    double xs[] = { 0.0, 1.0, 2.0, 3.0 };
-    double ys[] = { 0.0, 1.0, 4.0, 9.0 };
-    const int n = 4;
+    double p[] = { 1.0, 2.0, 3.0 }; // 1 + 2x + 3x^2
+    double q[] = { 5.0, 1.0 };      // 5 + x
 
-    std::cout << "linearInterpolation(0,0, 2,4, 1) = "
-              << linearInterpolation(0.0, 0.0, 2.0, 4.0, 1.0) << std::endl;
-    std::cout << "lagrange(xs, ys, 4, 2.5) = " << lagrange(xs, ys, n, 2.5) << std::endl;
-    std::cout << "interpolate(xs, ys, 4, 2.5) = " << interpolate(xs, ys, n, 2.5) << std::endl;
-    std::cout << "interpolationError(xs, ys, 4, 2.5, 6.25) = "
-              << interpolationError(xs, ys, n, 2.5, 6.25) << std::endl;
+    double sum[8] = {};
+    int sumN = polyAdd(p, 3, q, 2, sum, 8);
+    std::cout << "PolyAdd -> code=" << sumN << " result={" << sum[0] << ", " << sum[1] << ", " << sum[2] << "}" << std::endl;
+
+    double mul[8] = {};
+    int mulN = polyMultiply(p, 3, q, 2, mul, 8);
+    std::cout << "PolyMultiply -> code=" << mulN << " result={";
+    for (int i = 0; i < mulN; ++i) std::cout << mul[i] << (i + 1 < mulN ? ", " : "");
+    std::cout << "}" << std::endl;
+
+    double value = 0.0;
+    int evalStatus = polyEvaluate(p, 3, 2.0, &value);
+    std::cout << "PolyEvaluate(p, x=2) -> status=" << evalStatus << " value=" << value << " (expect 0, 17)" << std::endl;
+
+    double deriv[8] = {};
+    int derivN = polyDerivative(p, 3, deriv, 8);
+    std::cout << "PolyDerivative -> code=" << derivN << " result={" << deriv[0] << ", " << deriv[1] << "}" << std::endl;
+
+    double integ[8] = {};
+    int integN = polyIntegral(p, 3, 0.0, integ, 8);
+    std::cout << "PolyIntegral -> code=" << integN << " result={";
+    for (int i = 0; i < integN; ++i) std::cout << integ[i] << (i + 1 < integN ? ", " : "");
+    std::cout << "}" << std::endl;
+
+    std::cout << "\n--- Edge case: nullptr, undersized buffer ---" << std::endl;
+    int rNull = polyAdd(nullptr, 3, q, 2, sum, 8);
+    std::cout << "PolyAdd(a=nullptr) -> " << rNull << " (expect -1, POLY_ERR_NULL)" << std::endl;
+
+    int rBuf = polyMultiply(p, 3, q, 2, mul, 2);
+    std::cout << "PolyMultiply(outCapacity=2, need 4) -> " << rBuf << " (expect -3, POLY_ERR_BUFFER)" << std::endl;
 
     std::cout << "\n--- Edge case: looking up a non-existent function ---" << std::endl;
-    FARPROC missing = GetProcAddress(library, "thisFunctionDoesNotExist");
-    std::cout << "GetProcAddress(\"thisFunctionDoesNotExist\") = "
+    FARPROC missing = GetProcAddress(library, "ThisFunctionDoesNotExist");
+    std::cout << "GetProcAddress(\"ThisFunctionDoesNotExist\") = "
               << (missing == nullptr ? "nullptr (OK)" : "NOT NULL (unexpected)") << std::endl;
 
     FreeLibrary(library);

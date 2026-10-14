@@ -1,15 +1,14 @@
 cmake_minimum_required(VERSION 3.20)
 project(Etap3_ImplicitClient LANGUAGES CXX)
 
-# Неявне зв'язування: підключаємо .h для компіляції і .lib для лінкування.
-# Жодного коду з CMakeLists.txt партнера ми не чіпаємо - лише готовий SDK.
+# Неявне зв'язування з РЕАЛЬНИМ SDK партнера (PolyUtils, отриманий файлом
+# від напарника, а не mock). Підключаємо .h для компіляції і .lib для
+# лінкування.
 
-set(PARTNER_SDK_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../SDK_InterpolationMock)
+set(PARTNER_SDK_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../PolyUtils_SDK)
 
-if(NOT EXISTS "${PARTNER_SDK_DIR}/lib/InterpolationLib.lib")
-    message(FATAL_ERROR
-        "SDK_InterpolationMock not found at ${PARTNER_SDK_DIR}. "
-        "Build Etap2_SDK_Build first (it packages the SDK this client links against).")
+if(NOT EXISTS "${PARTNER_SDK_DIR}/lib/PolyUtils.lib")
+    message(FATAL_ERROR "PolyUtils_SDK not found at ${PARTNER_SDK_DIR}.")
 endif()
 
 add_executable(ImplicitClient main.cpp)
@@ -19,13 +18,12 @@ target_include_directories(ImplicitClient PRIVATE
 )
 
 target_link_libraries(ImplicitClient PRIVATE
-    ${PARTNER_SDK_DIR}/lib/InterpolationLib.lib
+    ${PARTNER_SDK_DIR}/lib/PolyUtils.lib
 )
 
-# Копіюємо DLL поруч з .exe, щоб неявне зв'язування могло завантажити
-# бібліотеку під час запуску (load-time linking).
+# Копіюємо DLL поруч з .exe для неявного (load-time) зв'язування.
 add_custom_command(TARGET ImplicitClient POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${PARTNER_SDK_DIR}/bin/InterpolationLib.dll"
+        "${PARTNER_SDK_DIR}/bin/PolyUtils.dll"
         "$<TARGET_FILE_DIR:ImplicitClient>"
 )
